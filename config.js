@@ -1,0 +1,1 @@
+window.TEACHEROS_CONFIG={supabaseUrl:"https://nazjyirwvobbwpsevbli.supabase.co",supabaseAnonKey:"sb_publishable_IkS5YJCSjSm9IAk9eXuBVw_kKTUjMZx"};
