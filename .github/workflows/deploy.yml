@@ -21,6 +21,8 @@ jobs:
       - name: Restore original TeacherOS V4
         shell: bash
         run: |
+          git fetch --no-tags --depth=1 origin 7f115f88b385f3457e25f976d2dd8cd3d786cb1b
+          git checkout 7f115f88b385f3457e25f976d2dd8cd3d786cb1b -- .teacheros_zip_parts
           cat .teacheros_zip_parts/* > /tmp/TeacherOS_V4.zip.b64
           base64 -d /tmp/TeacherOS_V4.zip.b64 > /tmp/TeacherOS_V4.zip
           rm -rf /tmp/TeacherOS_V4
