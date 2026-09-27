@@ -461,10 +461,46 @@ function makeCardQR(id,text){
   new QRCode(el,{text:String(text||''),width:156,height:156,correctLevel:QRCode.CorrectLevel.M});
 }
 
+function buildPrintDocument(cardsHtml,title){
+  return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>${title}</title>
+  <style>
+  @page{size:auto;margin:8mm}
+  *{box-sizing:border-box}
+  body{margin:0;background:#fff;font-family:Arial,sans-serif}
+  .printWrap{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+  .cardPrint{position:relative;width:300px;height:400px;border:2px solid #c99a2e;border-radius:18px;overflow:hidden;background:#080808;color:#fff;box-sizing:border-box;break-inside:avoid;page-break-inside:avoid}
+  .cardPrint:before{content:"";position:absolute;inset:0;background-image:url('logo_new.webp');background-repeat:no-repeat;background-position:center 58%;background-size:70%;opacity:.045;filter:grayscale(1)}
+  .cardPrint:after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(212,166,60,.95) 0 4%,transparent 4% 96%,rgba(212,166,60,.95) 96% 100%)}
+  .cardInner{position:relative;z-index:2;box-sizing:border-box;height:100%;padding:12px 16px 10px;display:flex;flex-direction:column;align-items:center;text-align:center}
+  .cardLogoTop{width:60px;height:68px;object-fit:contain}
+  .cardBrand{font-size:11px;font-weight:800;color:#d7a934}
+  .cardTitle{font-size:15px;font-weight:800;margin-top:8px}
+  .cardStudent{font-size:17px;font-weight:800;margin-top:3px;line-height:1.25;max-width:92%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cardMeta{font-size:11px;color:#e0b54b;font-weight:700;margin-top:4px}
+  .cardQrWrap{width:154px;height:154px;background:#fff;border:3px solid #c99a2e;border-radius:12px;padding:4px;margin-top:8px;display:grid;place-items:center;overflow:hidden}
+  .cardQrWrap img{display:block;width:144px;height:144px}
+  .cardHint{font-size:9px;margin-top:5px}
+  .cardTeacher{font-size:11px;font-weight:800;color:#e1b449;border:1px solid #b88723;border-radius:18px;padding:2px 14px;margin-top:5px}
+  @media print{.printWrap{justify-content:center}.cardPrint{break-inside:avoid!important;page-break-inside:avoid!important}}
+  </style></head><body><div class="printWrap">${cardsHtml}</div></body></html>`;
+}
+function printFromCards(ids){
+  const win=window.open('','_blank','width=900,height=700');
+  if(!win){toast('⚠️ المتصفح منع نافذة الطباعة — اسمح بالنوافذ المنبثقة للموقع');return}
+  const nodes=ids.map(id=>document.getElementById(id)).filter(Boolean);
+  const cards=nodes.map(n=>{
+    const clone=n.cloneNode(true);
+    const canvases=n.querySelectorAll('canvas'), cloneCanvases=clone.querySelectorAll('canvas');
+    canvases.forEach((cv,i)=>{if(cloneCanvases[i]){const img=document.createElement('img');img.src=cv.toDataURL('image/png');img.className='cardQrImage';cloneCanvases[i].replaceWith(img)}});
+    return clone.outerHTML;
+  }).join('');
+  win.document.open();win.document.write(buildPrintDocument(cards,'TeacherOS - كروت الطلاب'));win.document.close();
+  setTimeout(()=>{win.focus();win.print();},500);
+}
 function printStudentCard(id){
   const s=student(id);
   const token='single_'+String(s.id).replace(/\\W/g,'_');
-  openModal(`<div class="modalHead"><h3>كارت الطالب</h3><button class="close" onclick="closeModal()">✕</button></div><div id="singleCard" class="cardsPrint">${cardMarkup(s,token)}</div><div class="actions"><button class="btn" onclick="window.print()">طباعة</button></div>`);
+  openModal(`<div class="modalHead"><h3>كارت الطالب</h3><button class="close" onclick="closeModal()">✕</button></div><div id="singleCard" class="cardsPrint">${cardMarkup(s,token)}</div><div class="actions"><button class="btn" onclick="printFromCards(['singleCard'])">طباعة</button></div>`);
   setTimeout(()=>makeCardQR('qr_'+token,s.internalId||s.code||s.id),80);
 }
 function printCards(){
@@ -474,7 +510,9 @@ function renderPrintCards(){
   const g=document.getElementById('pcGroup').value;
   const list=activeStudents().filter(s=>s.group===g);
   const cards=list.map((s,i)=>cardMarkup(s,'group_'+i+'_'+String(s.id).replace(/\\W/g,'_'))).join('');
-  document.getElementById('cardsArea').innerHTML=`<div class="cardsPrint">${cards}</div><div class="actions"><button class="btn" onclick="window.print()">🖨️ Print All</button></div>`;
+  document.getElementById('cardsArea').innerHTML=`<div id="groupCards" class="cardsPrint">${cards}</div><div class="actions"><button class="btn" onclick="printFromCards(Array.from(document.querySelectorAll('#groupCards .cardPrint')).map((_,i)=>'groupCard_'+i))">🖨️ طباعة الكل</button></div>`;
+  const cardNodes=[...document.querySelectorAll('#groupCards .cardPrint')];
+  cardNodes.forEach((el,i)=>el.id='groupCard_'+i);
   setTimeout(()=>list.forEach((s,i)=>makeCardQR('qr_group_'+i+'_'+String(s.id).replace(/\\W/g,'_'),s.internalId||s.code||s.id)),80);
 }
 
