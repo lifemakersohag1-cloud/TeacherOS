@@ -23,7 +23,17 @@
 @media(max-width:1150px){.cards{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}}
 @media(max-width:800px){.side{width:66px;padding:9px 6px}.brand{justify-content:center}.brand>div:last-child,.nav span,.navTitle{display:none}.nav button{justify-content:center}.content{margin-right:66px;padding:12px}.cards{grid-template-columns:repeat(2,1fr)}.form,.two{grid-template-columns:1fr}.bigActionGrid{grid-template-columns:1fr}.searchWrap{min-width:210px}.tl{grid-template-columns:82px 1fr}}
 @media(max-width:520px){.cards{grid-template-columns:1fr}.top{align-items:flex-start}.top h1{font-size:19px}.toolbar input{min-width:145px}.attGrid{grid-template-columns:1fr}.miniGrid{grid-template-columns:repeat(2,1fr)}}
-@media print{.side,.top,.noPrint,.offline{display:none!important}.content{margin:0;padding:0}.panel,.card{box-shadow:none}.printOnly{display:block!important}.cardsPrint{grid-template-columns:repeat(2,1fr)}}
+@media print{
+  body{background:#fff!important}
+  body>*{visibility:hidden!important}
+  #modal,#modal.open,#modal.open *{visibility:visible!important}
+  #modal{display:block!important;position:static!important;background:#fff!important;padding:0!important}
+  #modal .box{width:100%!important;max-width:none!important;max-height:none!important;overflow:visible!important;padding:0!important;border-radius:0!important;box-shadow:none!important}
+  #modal .modalHead,#modal .toolbar,#modal .actions{display:none!important}
+  .cardsPrint{display:grid!important;grid-template-columns:repeat(3,300px)!important;gap:10px!important;justify-content:center!important}
+  .cardPrint{break-inside:avoid!important;page-break-inside:avoid!important}
+  #cardsArea{width:100%!important}
+}
 </style>
 </head>
 <body>
@@ -429,7 +439,8 @@ function quickSearch(){
 }
 function globalSearch(q){const r=activeStudents().filter(s=>(s.name+' '+s.code+' '+s.guardian+' '+s.phone).toLowerCase().includes(q.toLowerCase())).slice(0,12);document.getElementById('globalResults').innerHTML=r.map(s=>`<button class="item" style="width:100%;border:1px solid var(--line);background:#fff;text-align:right" onclick="closeModal();profile(${s.id})"><span><b>${esc(s.name)}</b><br><span class="muted">${s.code} · ${s.group}</span></span><span>${attPct(s.id)??'—'}${attPct(s.id)!==null?'%':''}</span></button>`).join('')||'<div class="empty">لا توجد نتائج</div>'}
 function attPct(id){const a=atFor(id);if(!a.length)return null;const eligible=a.filter(x=>['present','absent','late','excused'].includes(x.status));if(!eligible.length)return null;return Math.round(eligible.filter(x=>x.status==='present'||x.status==='late').length/eligible.length*100)}
-function cardMarkup(s){
+function cardMarkup(s,token){
+  const key=token||('single_'+String(s.id).replace(/\\W/g,'_'));
   return `<div class="cardPrint">
     <div class="cardInner">
       <img class="cardLogoTop" src="logo_new.webp" alt="عملاق الرياضيات">
@@ -437,24 +448,34 @@ function cardMarkup(s){
       <div class="cardTitle">الطالب</div>
       <div class="cardStudent">${esc(s.name)}</div>
       <div class="cardMeta">${esc(s.code)} · ${esc(s.group)}</div>
-      <div id="qr_${s.id}" class="cardQrWrap"></div>
+      <div id="qr_${key}" class="cardQrWrap"></div>
       <div class="cardHint">امسح QR لتسجيل الحضور</div>
       <div class="cardTeacher">${esc(db.settings.teacherName||'المدرس')}</div>
     </div>
   </div>`;
 }
+function makeCardQR(id,text){
+  const el=document.getElementById(id);
+  if(!el||!window.QRCode)return;
+  el.innerHTML='';
+  new QRCode(el,{text:String(text||''),width:156,height:156,correctLevel:QRCode.CorrectLevel.M});
+}
+
 function printStudentCard(id){
   const s=student(id);
-  openModal(`<div class="modalHead"><h3>كارت الطالب</h3><button class="close" onclick="closeModal()">✕</button></div><div id="singleCard" class="cardsPrint">${cardMarkup(s)}</div><div class="actions"><button class="btn" onclick="window.print()">طباعة</button></div>`);
-  setTimeout(()=>{if(window.QRCode)new QRCode(document.getElementById('qr_'+s.id),{text:s.internalId,width:150,height:150})},50)
+  const token='single_'+String(s.id).replace(/\\W/g,'_');
+  openModal(`<div class="modalHead"><h3>كارت الطالب</h3><button class="close" onclick="closeModal()">✕</button></div><div id="singleCard" class="cardsPrint">${cardMarkup(s,token)}</div><div class="actions"><button class="btn" onclick="window.print()">طباعة</button></div>`);
+  setTimeout(()=>makeCardQR('qr_'+token,s.internalId||s.code||s.id),80);
 }
 function printCards(){
-  openModal(`<div class="modalHead"><h3>طباعة كروت المجموعة</h3><button class="close" onclick="closeModal()">✕</button></div><div class="toolbar"><select id="pcGroup">${db.groups.map(g=>`<option>${g.code}</option>`).join('')}</select><button class="btn" onclick="renderPrintCards()">عرض الكروت</button></div><div id="cardsArea"></div>`)
+  openModal(`<div class="modalHead"><h3>طباعة كروت المجموعة</h3><button class="close" onclick="closeModal()">✕</button></div><div class="toolbar"><select id="pcGroup">${db.groups.map(g=>`<option value="${esc(g.code)}">${esc(g.code)}</option>`).join('')}</select><button class="btn" onclick="renderPrintCards()">عرض الكروت</button></div><div id="cardsArea"></div>`)
 }
 function renderPrintCards(){
-  const g=document.getElementById('pcGroup').value, list=activeStudents().filter(s=>s.group===g);
-  document.getElementById('cardsArea').innerHTML=`<div class="cardsPrint">${list.map(cardMarkup).join('')}</div><div class="actions"><button class="btn" onclick="window.print()">🖨️ Print All</button></div>`;
-  setTimeout(()=>list.forEach(s=>{if(window.QRCode)new QRCode(document.getElementById('qr_'+s.id),{text:s.internalId,width:150,height:150})}),50)
+  const g=document.getElementById('pcGroup').value;
+  const list=activeStudents().filter(s=>s.group===g);
+  const cards=list.map((s,i)=>cardMarkup(s,'group_'+i+'_'+String(s.id).replace(/\\W/g,'_'))).join('');
+  document.getElementById('cardsArea').innerHTML=`<div class="cardsPrint">${cards}</div><div class="actions"><button class="btn" onclick="window.print()">🖨️ Print All</button></div>`;
+  setTimeout(()=>list.forEach((s,i)=>makeCardQR('qr_group_'+i+'_'+String(s.id).replace(/\\W/g,'_'),s.internalId||s.code||s.id)),80);
 }
 
 function render(){
