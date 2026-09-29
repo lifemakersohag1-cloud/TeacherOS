@@ -455,6 +455,8 @@ function globalSearch(q){const r=activeStudents().filter(s=>(s.name+' '+s.code+'
 function attPct(id){const a=atFor(id);if(!a.length)return null;const eligible=a.filter(x=>['present','absent','late','excused'].includes(x.status));if(!eligible.length)return null;return Math.round(eligible.filter(x=>x.status==='present'||x.status==='late').length/eligible.length*100)}
 function cardMarkup(s,token){
   const key=token||('single_'+String(s.id).replace(/\W/g,'_'));
+  const teacher=(db.settings.teacherName&&db.settings.teacherName!=='اسم المدرس')?db.settings.teacherName:'الوليد محروس';
+  const subject=(db.settings.subject&&db.settings.subject!=='المادة')?db.settings.subject:'مدرس المادة';
   return `<div class="cardPrint">
     <div class="cardInner">
       <img class="cardLogoTop" src="${LOGO_SRC}" alt="عمدة الرياضيات">
