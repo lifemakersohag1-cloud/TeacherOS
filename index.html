@@ -582,7 +582,9 @@ function render(){
   document.getElementById('root').innerHTML=body;
 }
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
-loadCardLogo().finally(()=>{render();initCloud();});
+loadCardLogo();
+render();
+initCloud();
 </script>
 </body>
 </html>
