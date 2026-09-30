@@ -477,17 +477,19 @@ function buildPrintDocument(cardsHtml,title){
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>${title}</title>
   <style>
   @page{size:auto;margin:8mm}*{box-sizing:border-box}
-  body{margin:0;background:#fff;font-family:Arial,sans-serif}
+  :root{--card-template-bg:url("./card-background.jpg")}
+  html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{margin:0;background:#fff;font-family:Cairo,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .printWrap{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
-  .cardPrint{position:relative;width:320px;height:480px;aspect-ratio:2/3;container-type:inline-size;background:#050505 var(--card-template-bg) center/100% 100% no-repeat;border:0;border-radius:14px;overflow:hidden;break-inside:avoid;color:#fff;box-sizing:border-box}
-.cardExactTitle{position:absolute;left:20.5%;right:20.5%;top:28%;height:2px;display:flex;align-items:center;justify-content:space-between;z-index:3}
-.cardExactTitle i{height:2px;flex:0 1 34%;background:#f2b632;border-radius:10px}.cardExactTitle b{font-size:15px;color:#fff;font-weight:800;line-height:1;white-space:nowrap}
+  .cardPrint{position:relative;width:320px;height:480px;aspect-ratio:2/3;container-type:inline-size;background:#050505 var(--card-template-bg) center/100% 100% no-repeat;border:0;border-radius:14px;overflow:hidden;break-inside:avoid;color:#fff;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.cardExactLogo{position:absolute;left:41.41%;top:2.47%;width:17.18%;height:auto;z-index:5;filter:drop-shadow(0 0 8px rgba(242,182,50,.72)) drop-shadow(0 0 18px rgba(242,182,50,.28))}
+.cardExactTitle{display:none}
 .cardExactText{position:absolute;left:0;right:0;text-align:center;line-height:1;white-space:nowrap;transform:translateY(-50%);z-index:4}
 .cardExactName{top:32.7%;color:#fff;font-weight:800;font-size:6.2cqw;text-shadow:0 2px 8px rgba(0,0,0,.45)}
 .cardExactGroupLabel{top:38.1%;color:#f2b632;font-weight:700;font-size:4cqw}
 .cardExactGroupCode{top:42%;color:#f2b632;font-weight:800;font-size:5.6cqw;direction:ltr}
 .cardExactQrFrame{position:absolute;left:29.8%;top:47.7%;width:40.5%;aspect-ratio:1;border:0;border-radius:0;background:transparent;padding:0;display:flex;align-items:center;justify-content:center;z-index:3;box-shadow:none;overflow:hidden}
-.cardExactQr{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}.cardExactQr img,.cardExactQr canvas{width:100%!important;height:100%!important;display:block!important}
+.cardExactQr{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}.cardExactQr img,.cardExactQr canvas,.cardQrImage{width:100%!important;height:100%!important;display:block!important;image-rendering:auto}
 
 .cardExactTeacher{top:86.8%;color:#f7c948;font-weight:800;font-size:4.7cqw;z-index:4}
   </style></head><body><div class="printWrap">${cardsHtml}</div></body></html>`;
