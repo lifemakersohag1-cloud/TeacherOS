@@ -1,1 +1,11 @@
-# TeacherOS\n\nTeacher/student management app with Supabase cloud sync and offline local storage.\n\n## Setup\n1. Open the deployed site.\n2. Create an account.\n3. Import the existing Excel workbook from the Import Excel page.\n4. Data is synced to Supabase per account.\n\nThe frontend uses only the public Supabase publishable key; database access is protected by RLS.
+# TeacherOS
+
+Teacher/student management app with Supabase cloud sync and offline local storage.
+
+## Setup
+1. Open the deployed site.
+2. Create an account.
+3. Import the existing Excel workbook from the Import Excel page.
+4. Data is synced to Supabase per account.
+
+The frontend uses only the public Supabase publishable key; database access is protected by RLS.
