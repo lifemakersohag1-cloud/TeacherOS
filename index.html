@@ -76,33 +76,85 @@ function student(id){return db.students.find(s=>String(s.id)===String(id))}
 function group(code){return db.groups.find(g=>g.code===code)}
 function atFor(id){return db.attendance.filter(a=>String(a.studentId)===String(id))}
 function attRecord(studentId,date){return db.attendance.find(a=>String(a.studentId)===String(studentId)&&a.date===date)}
-function save(){localStorage.setItem(KEY,JSON.stringify(db)); updateOnlineState(); queueCloudSave()}
+const DIRTY_KEY='teacheros_v4_dirty', CLOUD_VER_KEY='teacheros_v4_cloudver';
+let cloudVersion=localStorage.getItem(CLOUD_VER_KEY)||'', cloudAgain=false, cloudRetry=null;
+function isDirty(){return localStorage.getItem(DIRTY_KEY)==='1'}
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){console.error(e);toast('⚠️ تعذر الحفظ محليًا — المساحة ممتلئة، اعمل نسخة احتياطية الآن')}
+  if(CLOUD_ENABLED)localStorage.setItem(DIRTY_KEY,'1');
+  updateOnlineState(); queueCloudSave()
+}
+function recKey(k,x){
+  if(x==null||typeof x!=='object')return JSON.stringify(x);
+  if(k==='attendance'&&x.studentId!=null&&x.date)return x.studentId+'|'+x.date+'|'+(x.sessionId||'');
+  return String(x.id??x.code??JSON.stringify(x));
+}
+function mergeDB(remote,local){
+  const out=Object.assign({},remote);
+  Object.keys(local||{}).forEach(k=>{
+    const l=local[k], r=remote[k];
+    if(Array.isArray(l)){
+      const m=new Map((Array.isArray(r)?r:[]).map(x=>[recKey(k,x),x]));
+      l.forEach(x=>m.set(recKey(k,x),x));
+      out[k]=[...m.values()];
+    }else if(l&&typeof l==='object')out[k]=Object.assign({},r||{},l);
+    else if(!(k in out))out[k]=l;
+  });
+  return out;
+}
 function queueCloudSave(){
   if(!CLOUD_ENABLED||!cloudUser||!cloudLoaded)return;
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer=setTimeout(()=>saveCloud(false),700);
 }
 async function saveCloud(show=true){
-  if(!CLOUD_ENABLED||!cloudUser||cloudBusy)return false;
+  if(!CLOUD_ENABLED||!cloudUser)return false;
+  if(cloudBusy){cloudAgain=true;return false}
   cloudBusy=true;
   try{
-    const payload={user_id:cloudUser.id,data:db,updated_at:new Date().toISOString()};
-    const {error}=await cloudClient.from('teacheros_data').upsert(payload,{onConflict:'user_id'});
+    const {data:cur,error:e0}=await cloudClient.from('teacheros_data').select('data,updated_at').eq('user_id',cloudUser.id).maybeSingle();
+    if(e0)throw e0;
+    if(cur&&cur.data&&cur.updated_at!==cloudVersion){
+      db=normalizeDB(mergeDB(cur.data,db));
+      localStorage.setItem(KEY,JSON.stringify(db));
+      toast('🔄 تم دمج تعديلات من جهاز آخر — حدّث الصفحة لرؤيتها');
+    }
+    const {data:up,error}=await cloudClient.from('teacheros_data').upsert({user_id:cloudUser.id,data:db,updated_at:new Date().toISOString()},{onConflict:'user_id'}).select('updated_at').maybeSingle();
     if(error)throw error;
+    if(up&&up.updated_at){cloudVersion=up.updated_at;localStorage.setItem(CLOUD_VER_KEY,cloudVersion)}
+    localStorage.removeItem(DIRTY_KEY);
+    clearTimeout(cloudRetry);
     if(show)toast('☁️ تمت مزامنة البيانات مع السحابة');
     return true;
-  }catch(e){console.error(e); if(show)toast('تعذر رفع البيانات للسحابة — النسخة المحلية ما زالت محفوظة'); return false}
-  finally{cloudBusy=false}
+  }catch(e){
+    console.error(e);
+    if(show)toast('تعذر رفع البيانات للسحابة — النسخة المحلية ما زالت محفوظة');
+    clearTimeout(cloudRetry);cloudRetry=setTimeout(()=>saveCloud(false),30000);
+    return false
+  }finally{
+    cloudBusy=false;
+    if(cloudAgain){cloudAgain=false;setTimeout(()=>saveCloud(false),300)}
+  }
 }
 async function loadCloud(){
   if(!CLOUD_ENABLED||!cloudUser)return;
   try{
     const {data,error}=await cloudClient.from('teacheros_data').select('data,updated_at').eq('user_id',cloudUser.id).maybeSingle();
     if(error)throw error;
-    if(data&&data.data){db=normalizeDB(data.data);localStorage.setItem(KEY,JSON.stringify(db));cloudLoaded=true;toast('☁️ تم تحميل بياناتك من السحابة');}
-    else {cloudLoaded=true;await saveCloud(false);toast('☁️ تم إنشاء نسخة السحابة لأول مرة')}
+    if(data&&data.data){
+      const remote=normalizeDB(data.data);
+      cloudVersion=data.updated_at;localStorage.setItem(CLOUD_VER_KEY,cloudVersion);
+      if(isDirty()){
+        db=normalizeDB(mergeDB(remote,db));localStorage.setItem(KEY,JSON.stringify(db));cloudLoaded=true;
+        toast('☁️ تم دمج تعديلاتك المحلية مع السحابة');await saveCloud(false);
+      }else{
+        db=remote;localStorage.setItem(KEY,JSON.stringify(db));cloudLoaded=true;toast('☁️ تم تحميل بياناتك من السحابة');
+      }
+    }else{cloudLoaded=true;await saveCloud(false);toast('☁️ تم إنشاء نسخة السحابة لأول مرة')}
   }catch(e){console.error(e);toast('تعذر الاتصال بقاعدة البيانات — ستعمل النسخة المحلية');cloudLoaded=true}
 }
+window.addEventListener('online',()=>{if(CLOUD_ENABLED&&cloudUser&&isDirty())saveCloud(false)});
+window.addEventListener('beforeunload',e=>{if(CLOUD_ENABLED&&isDirty()){if(navigator.onLine&&cloudUser)saveCloud(false);e.preventDefault();e.returnValue=''}});
 async function initCloud(){
   if(!CLOUD_ENABLED){cloudLoaded=true;return}
   const {data}=await cloudClient.auth.getSession();
@@ -116,6 +168,7 @@ async function initCloud(){
   });
   render();
 }
+
 function loadDB(){
   try{
     const raw=localStorage.getItem(KEY);
@@ -129,7 +182,7 @@ function normalizeDB(d){
   d.settings=Object.assign({teacherName:'المدرس',subject:'',centerName:'',attendanceThreshold:70,lateAfterMinutes:10},d.settings||{});
   d.attendanceSessions=d.attendanceSessions||[];
   d.auditLogs=d.auditLogs||[];
-  d.notes=d.notes||[];
+  d.notes=d.notes||[]; d.payments=d.payments||[];
   d.documents=d.documents||[];
   d.notifications=d.notifications||[];
   d.students.forEach(s=>{s.internalId=s.internalId||uid('stu');s.barcode=s.barcode||s.code;s.status=s.status||'active'});
@@ -192,7 +245,7 @@ function layout(title,sub,body){
   const nav=`<aside class="side"><div class="brand"><div class="brandLogo">📚</div><div><b>TeacherOS V4</b><small>نظام إدارة المدرس — Cloud</small></div></div>
   <div class="nav">${navButton('dashboard','🏠','الرئيسية')}${navButton('attendance','🟢','الحضور اليوم')}${navButton('scanner','📷','ماسح الحضور')}${navButton('students','👨‍🎓','الطلاب')}${navButton('groups','👥','المجموعات')}
   <div class="navTitle">الأكاديمي</div>${navButton('grades','📝','الدرجات')}${navButton('exams','📋','الامتحانات')}
-  <div class="navTitle">المتابعة</div>${navButton('followup','⚠️','يحتاج متابعة')}${navButton('communications','💬','التواصل')}
+  <div class="navTitle">المتابعة</div>${navButton('followup','⚠️','يحتاج متابعة')}${navButton('communications','💬','التواصل')}${navButton('finance','💰','المالية')}
   <div class="navTitle">النظام</div>${navButton('reports','📊','التقارير')}${navButton('archive','🗄️','الأرشيف')}${navButton('settings','⚙️','الإعدادات')}
   </div></aside>`;
   return `<div class="layout">${nav}<main class="content"><div class="top"><div><h1>${title}</h1><div class="sub">${sub}</div></div><div class="actions noPrint" style="margin:0"><span class="badge ${navigator.onLine?'greenB':'amberB'}">${navigator.onLine?'🟢 Online':'🟠 Offline'}</span>${CLOUD_ENABLED&&cloudUser?`<span class="badge blue">☁️ ${esc(cloudUser.email||'حساب سحابي')}</span><button class="btn light sm" onclick="saveCloud(true)">☁️ مزامنة الآن</button>`:''}<button class="btn gray sm" onclick="quickSearch()">بحث <span class="kbd">/</span></button></div></div>${body}</main></div>`;
@@ -416,7 +469,7 @@ function exportExcel(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.groups),'المجموعات');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.attendance),'الحضور');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.grades),'الدرجات');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.communications),'التواصل');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.communications),'التواصل');\n  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.payments||[]),'المدفوعات');
   XLSX.writeFile(wb,'TeacherOS_V3_Export.xlsx');toast('تم تصدير Excel')
 }
 function exportAttendance(date,g){
@@ -531,6 +584,50 @@ function renderPrintCards(){
   setTimeout(()=>list.forEach((s,i)=>makeCardQR('qr_group_'+i+'_'+String(s.id).replace(/\\W/g,'_'),s.internalId||s.code||s.id)),80);
 }
 
+/* ===== المالية: سعر مختلف لكل مجموعة ===== */
+let finMonth=today().slice(0,7), finGroup='';
+function monthOf(d){return String(d||'').slice(0,7)}
+function money(n){return (Math.round((+n||0)*100)/100).toLocaleString('ar-EG')+' '+(db.settings.currency||'')}
+function studentDue(s,m){
+  const g=group(s.group); if(!g)return 0;
+  if(s.joined&&monthOf(s.joined)>m)return 0;
+  const price=+g.price||0;
+  if(g.billing==='session')return price*atFor(s.id).filter(a=>monthOf(a.date)===m&&(a.status==='present'||a.status==='late')).length;
+  return price;
+}
+function studentPaid(id,m){return (db.payments||[]).filter(x=>String(x.studentId)===String(id)&&x.month===m).reduce((a,x)=>a+(+x.amount||0),0)}
+function financeRemaining(s,m){return Math.max(0,studentDue(s,m)-studentPaid(s.id,m))}
+function setFin(k,v){if(k==='m')finMonth=v||finMonth;else finGroup=v;render()}
+function setGroupPricing(code,field,val){const g=group(code);if(!g)return;g[field]=field==='price'?Math.max(0,+val||0):val;audit('pricing',null,null,val,{group:code,field});save();render()}
+function financePage(){
+  const rows=activeStudents().filter(s=>!finGroup||s.group===finGroup).map(s=>{const due=studentDue(s,finMonth),paid=studentPaid(s.id,finMonth);return{s,due,paid,rem:Math.max(0,due-paid)}});
+  const T=rows.reduce((a,r)=>({due:a.due+r.due,paid:a.paid+r.paid,rem:a.rem+r.rem}),{due:0,paid:0,rem:0});
+  const badge=r=>r.due===0?'<span class="badge blue">—</span>':r.rem===0?'<span class="badge greenB">مدفوع</span>':r.paid>0?'<span class="badge amberB">جزئي</span>':'<span class="badge redB">لم يدفع</span>';
+  return layout('المالية','سعر كل مجموعة والمدفوعات الشهرية',`
+  <div class="cards"><div class="card"><div class="label">المطلوب</div><div class="num">${money(T.due)}</div></div><div class="card"><div class="label">المحصّل</div><div class="num">${money(T.paid)}</div></div><div class="card"><div class="label">المتبقي</div><div class="num">${money(T.rem)}</div></div></div>
+  <div class="panel"><h3 style="margin-top:0">أسعار المجموعات</h3><div class="tableWrap"><table><thead><tr><th>المجموعة</th><th>نوع الحساب</th><th>السعر</th></tr></thead><tbody>${db.groups.map(g=>`<tr><td><b>${esc(g.code)}</b> ${esc(g.name)}</td><td><select onchange="setGroupPricing('${g.code}','billing',this.value)"><option value="monthly" ${g.billing!=='session'?'selected':''}>اشتراك شهري</option><option value="session" ${g.billing==='session'?'selected':''}>بالحصة</option></select></td><td><input type="number" min="0" style="width:110px" value="${+g.price||0}" onchange="setGroupPricing('${g.code}','price',this.value)"></td></tr>`).join('')}</tbody></table></div></div>
+  <div class="panel"><div class="toolbar"><input type="month" value="${finMonth}" onchange="setFin('m',this.value)"><select onchange="setFin('g',this.value)"><option value="">كل المجموعات</option>${db.groups.map(g=>`<option value="${esc(g.code)}" ${finGroup===g.code?'selected':''}>${esc(g.code)}</option>`).join('')}</select></div>
+  <div class="tableWrap"><table><thead><tr><th>الطالب</th><th>المجموعة</th><th>المطلوب</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.s.name)}<div class="muted">${esc(r.s.code)}</div></td><td>${esc(r.s.group)}</td><td>${money(r.due)}</td><td>${money(r.paid)}</td><td>${money(r.rem)}</td><td>${badge(r)}</td><td><button class="btn sm" onclick="payForm(${r.s.id})">+ دفعة</button> <button class="btn gray sm" onclick="payHistory(${r.s.id})">السجل</button>${r.rem>0?` <button class="btn green sm" onclick="wa(${r.s.id},'pay','${finMonth}')">تذكير</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">لا يوجد طلاب</td></tr>'}</tbody></table></div></div>`);
+}
+function payForm(id){
+  const s=student(id);if(!s)return;
+  openModal(`<div class="modalHead"><h3>تسجيل دفعة — ${esc(s.name)}</h3><button class="close" onclick="closeModal()">✕</button></div><div class="form"><div class="field"><label>الشهر</label><input value="${finMonth}" disabled></div><div class="field"><label>المبلغ (المتبقي ${money(financeRemaining(s,finMonth))})</label><input id="pfAmt" type="number" min="0" value="${financeRemaining(s,finMonth)}"></div><div class="field"><label>طريقة الدفع</label><select id="pfMethod"><option>كاش</option><option>تحويل</option><option>فودافون كاش</option></select></div><div class="field"><label>ملاحظة</label><input id="pfNote"></div></div><div class="actions"><button class="btn" onclick="savePayment(${s.id})">حفظ</button></div>`);
+}
+function savePayment(id){
+  const amount=+document.getElementById('pfAmt').value;if(!(amount>0))return toast('اكتب مبلغًا صحيحًا');
+  (db.payments=db.payments||[]).push({id:uid('pay'),studentId:id,month:finMonth,amount,method:document.getElementById('pfMethod').value,note:document.getElementById('pfNote').value.trim(),date:today(),at:nowISO()});
+  audit('payment',id,null,amount,{month:finMonth});save();closeModal();render();toast('تم تسجيل الدفعة');
+}
+function payHistory(id){
+  const s=student(id),list=(db.payments||[]).filter(x=>String(x.studentId)===String(id)).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  openModal(`<div class="modalHead"><h3>سجل مدفوعات ${esc(s.name)}</h3><button class="close" onclick="closeModal()">✕</button></div><div class="tableWrap"><table><thead><tr><th>التاريخ</th><th>الشهر</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody>${list.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.month)}</td><td>${money(x.amount)}</td><td>${esc(x.method||'')}${x.note?'<div class="muted">'+esc(x.note)+'</div>':''}</td><td><button class="btn gray sm" onclick="delPayment('${x.id}',${id})">حذف</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">لا توجد مدفوعات</td></tr>'}</tbody></table></div>`);
+}
+function delPayment(pid,sid){
+  if(!confirm('حذف هذه الدفعة؟'))return;
+  const x=(db.payments||[]).find(p=>p.id===pid);db.payments=(db.payments||[]).filter(p=>p.id!==pid);
+  audit('payment_delete',sid,x&&x.amount,null,{month:x&&x.month});save();render();payHistory(sid);
+}
+
 function render(){
   if(!session){loginPage();return}
   updateOnlineState();
@@ -543,7 +640,7 @@ function render(){
   else if(currentPage==='grades')body=gradesPage();
   else if(currentPage==='exams')body=examsPage();
   else if(currentPage==='followup')body=followupPage();
-  else if(currentPage==='communications')body=communicationsPage();
+  else if(currentPage==='communications')body=communicationsPage();\n  else if(currentPage==='finance')body=financePage();
   else if(currentPage==='reports')body=reportsPage();
   else if(currentPage==='archive')body=archivePage();
   else if(currentPage==='settings')body=settingsPage();
