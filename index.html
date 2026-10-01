@@ -469,7 +469,8 @@ function exportExcel(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.groups),'المجموعات');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.attendance),'الحضور');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.grades),'الدرجات');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.communications),'التواصل');\n  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.payments||[]),'المدفوعات');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.communications),'التواصل');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.payments||[]),'المدفوعات');
   XLSX.writeFile(wb,'TeacherOS_V3_Export.xlsx');toast('تم تصدير Excel')
 }
 function exportAttendance(date,g){
@@ -640,7 +641,8 @@ function render(){
   else if(currentPage==='grades')body=gradesPage();
   else if(currentPage==='exams')body=examsPage();
   else if(currentPage==='followup')body=followupPage();
-  else if(currentPage==='communications')body=communicationsPage();\n  else if(currentPage==='finance')body=financePage();
+  else if(currentPage==='communications')body=communicationsPage();
+  else if(currentPage==='finance')body=financePage();
   else if(currentPage==='reports')body=reportsPage();
   else if(currentPage==='archive')body=archivePage();
   else if(currentPage==='settings')body=settingsPage();
